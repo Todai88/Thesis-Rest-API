@@ -50,7 +50,7 @@ CONSTRAINT products_pkey PRIMARY KEY (id)
 func TestEmptyTable(t *testing.T) {
 	clearTable()
 
-	req, _ := http.NewRequest("GET", "/products", nil)
+	req, _ := http.NewRequest("GET", "/companies", nil)
 	response := executeRequest(req)
 
 	checkResponseCode(t, http.StatusOK, response.Code)
