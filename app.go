@@ -56,12 +56,12 @@ func (a *App) getCompanies(w http.ResponseWriter, r *http.Request) {
 		start = 0
 	}
 
-	//companies, err := getCompanies(a.DB, start, count)
-	companies := []company{}
-	// if err != nil {
-	// 	respondWithError(w, http.StatusInternalServerError, err.Error())
-	// 	return
-	// }
+	companies, err := getCompanies(a.DB, start, count)
+
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 
 	respondWithJSON(w, http.StatusOK, companies)
 }
