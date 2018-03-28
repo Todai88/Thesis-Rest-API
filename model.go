@@ -6,8 +6,8 @@ import (
 )
 
 type company struct {
-	ID   int    `json:"id"`
-	NAME string `json:"name"`
+	Id   int    `json:"id"`
+	Name string `json:"name"`
 }
 
 func (c *company) getCompanies(db *sql.DB) error {
@@ -15,5 +15,25 @@ func (c *company) getCompanies(db *sql.DB) error {
 }
 
 func getCompanies(db *sql.DB, start, count int) ([]company, error) {
-	return nil, errors.New("Not implemented")
+	rows, err := db.Query(
+		"SELECT id, name FROM company LIMIT $1 OFFSET $2",
+		count,
+		start)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	companies := []company{}
+
+	for rows.Next() {
+		var c company
+		if err := rows.Scan(&c.Id, &c.Name); err != nil {
+			return nil, err
+		}
+		companies = append(companies, c)
+	}
+	return companies, nil
 }
