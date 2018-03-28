@@ -2,7 +2,7 @@ package main
 
 import "os"
 
-// testing the build server
+// testing the build serve
 func main() {
 	a := App{}
 	a.Initialize(
