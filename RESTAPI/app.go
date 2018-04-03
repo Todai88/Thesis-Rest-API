@@ -17,12 +17,14 @@ type App struct {
 	DB     *sql.DB
 }
 
-func (a *App) Initialize(user, password, dbname string) {
+func (a *App) Initialize(user, password, dbname, host, port string) {
 	connectionString :=
-		fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable",
+		fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable host=%s port=%s",
 			user,
 			password,
-			dbname)
+			dbname,
+			host,
+			port)
 	var err error
 
 	a.DB, err = sql.Open("postgres", connectionString)
@@ -35,10 +37,7 @@ func (a *App) Initialize(user, password, dbname string) {
 	a.initializeRoutes()
 }
 
-func (a *App) initializeRoutes() {
-	a.Router.HandleFunc("/companies", a.getCompanies).Methods("GET")
-}
-func (a *App) Run(addr string, port string) {
+func (a *App) Run() {
 	log.Fatal(http.ListenAndServe(":8000", a.Router))
 }
 
@@ -64,6 +63,28 @@ func (a *App) getCompanies(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, http.StatusOK, companies)
+}
+
+func (a *App) getCompany(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid company id")
+	}
+
+	c := company{Id: id}
+	if err := c.getCompany(a.DB); err != nil {
+		switch err {
+		case sql.ErrNoRows:
+			respondWithError(w, http.StatusNotFound, "Company not found")
+		default:
+			respondWithError(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, c)
 }
 
 func respondWithError(w http.ResponseWriter, code int, message string) {

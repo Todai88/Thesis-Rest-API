@@ -17,7 +17,9 @@ func TestMain(m *testing.M) {
 	a.Initialize(
 		os.Getenv("APP_DB_USERNAME"),
 		os.Getenv("APP_DB_PASSWORD"),
-		os.Getenv("APP_DB_NAME"))
+		os.Getenv("APP_DB_NAME"),
+		os.Getenv("APP_DB_ADDR"),
+		os.Getenv("APP_DB_PORT"))
 
 	ensureTableExists()
 
@@ -35,11 +37,11 @@ func ensureTableExists() {
 }
 
 func clearTable() {
-	a.DB.Exec("DELETE FROM products")
-	a.DB.Exec("ALTER SEQUENCE products_id_seq RESTART WITH 1")
+	a.DB.Exec("DELETE FROM test_table")
+	a.DB.Exec("ALTER SEQUENCE test_table RESTART WITH 1")
 }
 
-const tableCreationQuery = `CREATE TABLE IF NOT EXISTS products
+const tableCreationQuery = `CREATE TABLE IF NOT EXISTS test_table
 (
 id SERIAL,
 name TEXT NOT NULL,
@@ -56,7 +58,7 @@ func TestEmptyTable(t *testing.T) {
 	checkResponseCode(t, http.StatusOK, response.Code)
 	//tz
 	if body := response.Body.String(); body != "[]" {
-		t.Errorf("Expected an empty array. Got %", body)
+		t.Errorf("Expected an empty array. Got %s", body)
 	}
 }
 
