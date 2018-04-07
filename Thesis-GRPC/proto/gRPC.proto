@@ -7,7 +7,7 @@ option java_outer_classname = "gRPC";
 package gRPC;
 
 service gRPC {
-    rpc ConnectUser (stream Message) returns (stream Message);
+    rpc EstablishBidiConnection (stream Message) returns (stream Message);
 }
 
 message User { 
