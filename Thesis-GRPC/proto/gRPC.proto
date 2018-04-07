@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "gRPC";
+option java_outer_classname = "gRPC";
+
+package gRPC;
+
+service gRPC {
+    rpc ConnectUser (User) returns (stream Message);
+    rpc MessageUser (stream Message) returns (Response);
+    rpc BidiInt (stream Request) returns (stream Response);
+}
+
+message User { 
+    int32 id = 1;
+    string name = 2;
+    string ip = 3;
+}
+
+message Message {
+    User sender = 1;
+    User receiver = 2;
+    string message = 3;
+}
+
+message Request {
+    int32 num = 1;
+}
+
+message Response {
+    int32 result = 1;
+}
+
+message AttackUser {
+    int32 targetid = 1;
+    int32 attackerid = 2;
+}
+
+message AlertUser {
+    int32 attackerid = 1;
+    int32 targetid = 2;
+}
