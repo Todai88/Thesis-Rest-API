@@ -13,7 +13,6 @@ service gRPC {
 message User { 
     int32 id = 1;
     string name = 2;
-    string ip = 3;
 }
 
 message Message {
