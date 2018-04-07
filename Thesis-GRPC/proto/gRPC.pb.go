@@ -21,6 +21,14 @@ import proto "github.com/golang/protobuf/proto"
 import fmt "fmt"
 import math "math"
 
+<<<<<<< HEAD
+=======
+import (
+	context "golang.org/x/net/context"
+	grpc "google.golang.org/grpc"
+)
+
+>>>>>>> 24670457fd876e2dfdcdaea69d5c680b7af752ed
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal
 var _ = fmt.Errorf
@@ -185,6 +193,240 @@ func init() {
 	proto.RegisterType((*AlertUser)(nil), "gRPC.AlertUser")
 }
 
+<<<<<<< HEAD
+=======
+// Reference imports to suppress errors if they are not otherwise used.
+var _ context.Context
+var _ grpc.ClientConn
+
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the grpc package it is being compiled against.
+const _ = grpc.SupportPackageIsVersion4
+
+// Client API for GRPC service
+
+type GRPCClient interface {
+	ConnectUser(ctx context.Context, in *User, opts ...grpc.CallOption) (GRPC_ConnectUserClient, error)
+	MessageUser(ctx context.Context, opts ...grpc.CallOption) (GRPC_MessageUserClient, error)
+	BidiInt(ctx context.Context, opts ...grpc.CallOption) (GRPC_BidiIntClient, error)
+}
+
+type gRPCClient struct {
+	cc *grpc.ClientConn
+}
+
+func NewGRPCClient(cc *grpc.ClientConn) GRPCClient {
+	return &gRPCClient{cc}
+}
+
+func (c *gRPCClient) ConnectUser(ctx context.Context, in *User, opts ...grpc.CallOption) (GRPC_ConnectUserClient, error) {
+	stream, err := grpc.NewClientStream(ctx, &_GRPC_serviceDesc.Streams[0], c.cc, "/gRPC.gRPC/ConnectUser", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &gRPCConnectUserClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type GRPC_ConnectUserClient interface {
+	Recv() (*Message, error)
+	grpc.ClientStream
+}
+
+type gRPCConnectUserClient struct {
+	grpc.ClientStream
+}
+
+func (x *gRPCConnectUserClient) Recv() (*Message, error) {
+	m := new(Message)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *gRPCClient) MessageUser(ctx context.Context, opts ...grpc.CallOption) (GRPC_MessageUserClient, error) {
+	stream, err := grpc.NewClientStream(ctx, &_GRPC_serviceDesc.Streams[1], c.cc, "/gRPC.gRPC/MessageUser", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &gRPCMessageUserClient{stream}
+	return x, nil
+}
+
+type GRPC_MessageUserClient interface {
+	Send(*Message) error
+	CloseAndRecv() (*Response, error)
+	grpc.ClientStream
+}
+
+type gRPCMessageUserClient struct {
+	grpc.ClientStream
+}
+
+func (x *gRPCMessageUserClient) Send(m *Message) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *gRPCMessageUserClient) CloseAndRecv() (*Response, error) {
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	m := new(Response)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *gRPCClient) BidiInt(ctx context.Context, opts ...grpc.CallOption) (GRPC_BidiIntClient, error) {
+	stream, err := grpc.NewClientStream(ctx, &_GRPC_serviceDesc.Streams[2], c.cc, "/gRPC.gRPC/BidiInt", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &gRPCBidiIntClient{stream}
+	return x, nil
+}
+
+type GRPC_BidiIntClient interface {
+	Send(*Request) error
+	Recv() (*Response, error)
+	grpc.ClientStream
+}
+
+type gRPCBidiIntClient struct {
+	grpc.ClientStream
+}
+
+func (x *gRPCBidiIntClient) Send(m *Request) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *gRPCBidiIntClient) Recv() (*Response, error) {
+	m := new(Response)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// Server API for GRPC service
+
+type GRPCServer interface {
+	ConnectUser(*User, GRPC_ConnectUserServer) error
+	MessageUser(GRPC_MessageUserServer) error
+	BidiInt(GRPC_BidiIntServer) error
+}
+
+func RegisterGRPCServer(s *grpc.Server, srv GRPCServer) {
+	s.RegisterService(&_GRPC_serviceDesc, srv)
+}
+
+func _GRPC_ConnectUser_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(User)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(GRPCServer).ConnectUser(m, &gRPCConnectUserServer{stream})
+}
+
+type GRPC_ConnectUserServer interface {
+	Send(*Message) error
+	grpc.ServerStream
+}
+
+type gRPCConnectUserServer struct {
+	grpc.ServerStream
+}
+
+func (x *gRPCConnectUserServer) Send(m *Message) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _GRPC_MessageUser_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(GRPCServer).MessageUser(&gRPCMessageUserServer{stream})
+}
+
+type GRPC_MessageUserServer interface {
+	SendAndClose(*Response) error
+	Recv() (*Message, error)
+	grpc.ServerStream
+}
+
+type gRPCMessageUserServer struct {
+	grpc.ServerStream
+}
+
+func (x *gRPCMessageUserServer) SendAndClose(m *Response) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *gRPCMessageUserServer) Recv() (*Message, error) {
+	m := new(Message)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func _GRPC_BidiInt_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(GRPCServer).BidiInt(&gRPCBidiIntServer{stream})
+}
+
+type GRPC_BidiIntServer interface {
+	Send(*Response) error
+	Recv() (*Request, error)
+	grpc.ServerStream
+}
+
+type gRPCBidiIntServer struct {
+	grpc.ServerStream
+}
+
+func (x *gRPCBidiIntServer) Send(m *Response) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *gRPCBidiIntServer) Recv() (*Request, error) {
+	m := new(Request)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+var _GRPC_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "gRPC.gRPC",
+	HandlerType: (*GRPCServer)(nil),
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "ConnectUser",
+			Handler:       _GRPC_ConnectUser_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "MessageUser",
+			Handler:       _GRPC_MessageUser_Handler,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "BidiInt",
+			Handler:       _GRPC_BidiInt_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
+	Metadata: "gRPC.proto",
+}
+
+>>>>>>> 24670457fd876e2dfdcdaea69d5c680b7af752ed
 func init() { proto.RegisterFile("gRPC.proto", fileDescriptor0) }
 
 var fileDescriptor0 = []byte{
