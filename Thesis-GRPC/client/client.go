@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	pb "github.com/todai88/thesis/Thesis-GRPC/proto"
@@ -16,7 +17,30 @@ const (
 	address = "localhost:5000"
 )
 
-func connectUser(client pb.GRPCClient) int32 {
+// func connectUser(client pb.GRPCClient) int32 {
+// 	stdin := bufio.NewReader(os.Stdin)
+// 	var id int32
+// 	fmt.Print("Enter ID (numeric): ")
+// 	fmt.Scanf("%d", &id)
+// 	name := "Tester"
+// 	if len(os.Args) > 1 {
+// 		name = os.Args[1]
+// 	}
+// 	stdin.ReadString('\n')
+
+// 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+// 	defer cancel()
+
+// 	stream, err := client.ConnectUser(ctx, &pb.User{Name: name, Ip: "192.168.0.1", Id: id})
+// 	if err != nil {
+// 		log.Fatalf("Could not greet: %v", err)
+// 	}
+// 	resp, err := stream.Recv()
+// 	fmt.Println(resp)
+// 	return id
+// }
+
+func createUser() pb.User {
 	stdin := bufio.NewReader(os.Stdin)
 	var id int32
 	fmt.Print("Enter ID (numeric): ")
@@ -26,49 +50,87 @@ func connectUser(client pb.GRPCClient) int32 {
 		name = os.Args[1]
 	}
 	stdin.ReadString('\n')
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-
-	stream, err := client.ConnectUser(ctx, &pb.User{Name: name, Ip: "192.168.0.1", Id: id})
-	if err != nil {
-		log.Fatalf("Could not greet: %v", err)
-	}
-	resp, err := stream.Recv()
-	fmt.Println(resp)
-	return id
+	return pb.User{Id: id, Name: name}
 }
-func subscribeStream(id int32, client pb.GRPCClient) {
-	stdin := bufio.NewReader(os.Stdin)
-	stream, err := client.MessageUser(context.Background())
-	if err != nil {
-		fmt.Println(err)
-	}
-	ctx := stream.Context()
-	fmt.Println("In goroutine")
-	for i := 1; i <= 10; i++ {
-		var targetId int32
-		fmt.Println("Enter target id (numeric): ")
-		fmt.Scanf("%d", &targetId)
-		stdin.ReadString('\n')
-
-		client.MessageUser(ctx)
-		if err := stream.Send(&pb.Message{Sender: &pb.User{Id: id, Name: "Attacker"}, Receiver: &pb.User{Id: targetId, Name: "Sender"}, Message: "Tag, you're it! :)"}); err != nil {
-			log.Fatalf("can not send %v", err)
-		}
-	}
-}
-
-func main() {
+func estblishConnectionAndSendMessages(user pb.User) error {
 	conn, err := grpc.Dial(address, grpc.WithInsecure())
 	if err != nil {
-		log.Fatalf("did not connect: %v", err)
+		log.Fatalf("can not connect with server %v", err)
 	}
 	defer conn.Close()
-	c := pb.NewGRPCClient(conn)
-	id := connectUser(c)
+	// create stream
+	client := pb.NewGRPCClient(conn)
+	stream, err := client.EstablishBidiConnection(context.Background())
+	if err != nil {
+		log.Fatalf("openn stream error %v", err)
+	}
+	fmt.Println("Stream opened")
+	// ctx := stream.Context()
+	// done := make(chan bool)
 
-	subscribeStream(id, c)
+	req := pb.Message{Sender: &pb.User{Id: user.Id, Name: user.Name}, Message: "Connection", Receiver: &pb.User{Id: user.Id, Name: user.Name}}
+	if err := stream.Send(&req); err != nil {
+		log.Fatalf("can not send %v", err)
+	}
+
+	// go func(pb.User, pb.GRPC_EstablishBidiConnectionClient) {
+	for i := 1; i <= 10; i++ {
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Print("Enter Target Id: ")
+		text, _ := reader.ReadString('\n')
+		number, _ := strconv.ParseInt(text, 10, 4)
+		num := int32(number)
+
+		fmt.Println(num)
+
+		req := pb.Message{Sender: &pb.User{Id: user.Id, Name: user.Name},
+			Receiver: &pb.User{Id: num},
+			Message:  "Attack"}
+		// generate random nummber and send it to stream
+		if err := stream.Send(&req); err != nil {
+			log.Fatalf("can not send %v", err)
+		}
+		time.Sleep(time.Millisecond * 200)
+	}
+
+	if err := stream.CloseSend(); err != nil {
+		log.Println(err)
+	}
+
+	// }(user, stream)
+	return nil
+}
+
+// func subscribeStream(id int32, client pb.GRPCClient) {
+// 	stdin := bufio.NewReader(os.Stdin)
+// 	stream, err := client.MessageUser(context.Background())
+// 	if err != nil {
+// 		fmt.Println(err)
+// 	}
+// 	ctx := stream.Context()
+// 	fmt.Println("In goroutine")
+// 	for i := 1; i <= 10; i++ {
+// 		var targetId int32
+// 		fmt.Println("Enter target id (numeric): ")
+// 		fmt.Scanf("%d", &targetId)
+// 		stdin.ReadString('\n')
+
+// 		client.MessageUser(ctx)
+// 		if err := stream.Send(&pb.Message{Sender: &pb.User{Id: id, Name: "Attacker"}, Receiver: &pb.User{Id: targetId, Name: "Sender"}, Message: "Tag, you're it! :)"}); err != nil {
+// 			log.Fatalf("can not send %v", err)
+// 		}
+// 	}
+// }
+
+func main() {
+	// conn, err := grpc.Dial(address, grpc.WithInsecure())
+	// if err != nil {
+	// 	log.Fatalf("did not connect: %v", err)
+	// }
+	// defer conn.Close()
+	// c := pb.NewGRPCClient(conn)
+	user := createUser()
+	estblishConnectionAndSendMessages(user)
 
 	// rand.Seed(time.Now().Unix())
 
