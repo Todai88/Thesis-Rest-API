@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strconv"
@@ -16,29 +17,6 @@ import (
 const (
 	address = "localhost:5000"
 )
-
-// func connectUser(client pb.GRPCClient) int32 {
-// 	stdin := bufio.NewReader(os.Stdin)
-// 	var id int32
-// 	fmt.Print("Enter ID (numeric): ")
-// 	fmt.Scanf("%d", &id)
-// 	name := "Tester"
-// 	if len(os.Args) > 1 {
-// 		name = os.Args[1]
-// 	}
-// 	stdin.ReadString('\n')
-
-// 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-// 	defer cancel()
-
-// 	stream, err := client.ConnectUser(ctx, &pb.User{Name: name, Ip: "192.168.0.1", Id: id})
-// 	if err != nil {
-// 		log.Fatalf("Could not greet: %v", err)
-// 	}
-// 	resp, err := stream.Recv()
-// 	fmt.Println(resp)
-// 	return id
-// }
 
 func createUser() pb.User {
 	stdin := bufio.NewReader(os.Stdin)
@@ -59,142 +37,74 @@ func estblishConnectionAndSendMessages(user pb.User) error {
 	}
 	defer conn.Close()
 	// create stream
-	client := pb.NewGRPCClient(conn)
-	stream, err := client.EstablishBidiConnection(context.Background())
+
+	timeout := 5 * time.Minute
+	ctx, _ := context.WithTimeout(context.Background(), timeout)
+	client, err := pb.NewGRPCClient(conn).EstablishBidiConnection(ctx)
+	req := pb.Message{Sender: &pb.User{Id: user.Id, Name: user.Name}, Message: "Connection", Receiver: &pb.User{Id: user.Id, Name: user.Name}}
+	client.Send(&req)
 	if err != nil {
 		log.Fatalf("openn stream error %v", err)
 	}
-	fmt.Println("Stream opened")
-	// ctx := stream.Context()
-	// done := make(chan bool)
 
-	req := pb.Message{Sender: &pb.User{Id: user.Id, Name: user.Name}, Message: "Connection", Receiver: &pb.User{Id: user.Id, Name: user.Name}}
-	if err := stream.Send(&req); err != nil {
-		log.Fatalf("can not send %v", err)
-	}
-
-	// go func(pb.User, pb.GRPC_EstablishBidiConnectionClient) {
-	for i := 1; i <= 10; i++ {
-		reader := bufio.NewReader(os.Stdin)
-		fmt.Print("Enter Target Id: ")
-		text, _ := reader.ReadString('\n')
-		number, _ := strconv.ParseInt(text, 10, 4)
-		num := int32(number)
-
-		fmt.Println(num)
-
-		req := pb.Message{Sender: &pb.User{Id: user.Id, Name: user.Name},
-			Receiver: &pb.User{Id: num},
-			Message:  "Attack"}
-		// generate random nummber and send it to stream
-		if err := stream.Send(&req); err != nil {
-			log.Fatalf("can not send %v", err)
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
 		}
-		time.Sleep(time.Millisecond * 200)
-	}
 
-	if err := stream.CloseSend(); err != nil {
-		log.Println(err)
-	}
+		// listener := make(chan pb.Message)
+		// sendErrorChannel := make(chan error)
+		go func() {
+			for {
+				msg, err := client.Recv()
+				if err == io.EOF {
+					return
+				}
+				log.Println(msg)
+			}
+		}()
 
-	// }(user, stream)
+		// recErrorChannel := make(chan error)
+		// go func() {
+		// 	for {
+		// 		msg, err := client.Recv()
+		// 		if err == io.EOF {
+		// 			close(recErrorChannel)
+		// 			return
+		// 		}
+		// 		if err != nil {
+		// 			recErrorChannel <- err
+		// 			return
+		// 		}
+		// 		log.Printf("Received a message: %s", msg)
+		// 	}
+		// }()
+		for {
+			reader := bufio.NewReader(os.Stdin)
+			fmt.Print("Enter Target Id: ")
+			text, _ := reader.ReadString('\n')
+			number, _ := strconv.ParseInt(text, 10, 4)
+			num := int32(number)
+
+			fmt.Println(num)
+
+			req := pb.Message{Sender: &pb.User{Id: user.Id, Name: user.Name},
+				Receiver: &pb.User{Id: num, Name: ""},
+				Message:  "Attack"}
+			fmt.Println(req)
+			err = client.Send(&req)
+		}
+		select {
+		case <-client.Context().Done():
+			return client.Context().Err()
+		}
+	}
 	return nil
 }
 
-// func subscribeStream(id int32, client pb.GRPCClient) {
-// 	stdin := bufio.NewReader(os.Stdin)
-// 	stream, err := client.MessageUser(context.Background())
-// 	if err != nil {
-// 		fmt.Println(err)
-// 	}
-// 	ctx := stream.Context()
-// 	fmt.Println("In goroutine")
-// 	for i := 1; i <= 10; i++ {
-// 		var targetId int32
-// 		fmt.Println("Enter target id (numeric): ")
-// 		fmt.Scanf("%d", &targetId)
-// 		stdin.ReadString('\n')
-
-// 		client.MessageUser(ctx)
-// 		if err := stream.Send(&pb.Message{Sender: &pb.User{Id: id, Name: "Attacker"}, Receiver: &pb.User{Id: targetId, Name: "Sender"}, Message: "Tag, you're it! :)"}); err != nil {
-// 			log.Fatalf("can not send %v", err)
-// 		}
-// 	}
-// }
-
 func main() {
-	// conn, err := grpc.Dial(address, grpc.WithInsecure())
-	// if err != nil {
-	// 	log.Fatalf("did not connect: %v", err)
-	// }
-	// defer conn.Close()
-	// c := pb.NewGRPCClient(conn)
 	user := createUser()
 	estblishConnectionAndSendMessages(user)
-
-	// rand.Seed(time.Now().Unix())
-
-	// conn, err := grpc.Dial(address, grpc.WithInsecure())
-	// if err != nil {
-	// 	log.Fatalf("can not connect with server %v", err)
-	// }
-
-	// // create stream
-	// client := pb.NewGRPCClient(conn)
-	// stream, err := client.BidiInt(context.Background())
-	// if err != nil {
-	// 	log.Fatalf("openn stream error %v", err)
-	// }
-
-	// var max int32
-	// ctx := stream.Context()
-	// done := make(chan bool)
-
-	// go func() {
-	// 	for i := 1; i <= 10; i++ {
-	// 		// generate random nummber and send it to stream
-	// 		rnd := int32(rand.Intn(i))
-	// 		req := pb.Request{Num: rnd}
-	// 		if err := stream.Send(&req); err != nil {
-	// 			log.Fatalf("can not send %v", err)
-	// 		}
-	// 		log.Printf("%d sent", req.Num)
-	// 		time.Sleep(time.Millisecond * 200)
-	// 	}
-	// 	if err := stream.CloseSend(); err != nil {
-	// 		log.Println(err)
-	// 	}
-	// }()
-
-	// // second goroutine receives data from stream
-	// // and saves result in max variable
-	// //
-	// // if stream is finished it closes done channel
-	// go func() {
-	// 	for {
-	// 		resp, err := stream.Recv()
-	// 		if err == io.EOF {
-	// 			close(done)
-	// 			return
-	// 		}
-	// 		if err != nil {
-	// 			log.Fatalf("can not receive %v", err)
-	// 		}
-	// 		max = resp.Result
-	// 		log.Printf("new max %d received", max)
-	// 	}
-	// }()
-
-	// // third goroutine closes done channel
-	// // if context is done
-	// go func() {
-	// 	<-ctx.Done()
-	// 	if err := ctx.Err(); err != nil {
-	// 		log.Println(err)
-	// 	}
-	// 	close(done)
-	// }()
-
-	// <-done
-	// log.Printf("finished with max=%d", max)
 }

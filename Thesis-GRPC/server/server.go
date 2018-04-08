@@ -1,10 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
 	"net"
+	"sync"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	pb "github.com/todai88/thesis/Thesis-GRPC/proto"
 	"google.golang.org/grpc"
@@ -14,62 +19,73 @@ import (
 type User struct {
 	name, ip string
 	id       int
-	stream   pb.GRPC_EstablishBidiConnectionServer
 }
 
-type Msg struct {
-	message string
+type MessageChannel struct {
+	listenerMu sync.RWMutex
+	listeners  map[int32]chan<- pb.Message
 }
 
-type server struct {
-	users map[int32]User
+type Server struct {
+	channels MessageChannel
 }
 
-// func (s *server) ConnectUser(in *pb.User, stream pb.GRPC_ConnectUserServer) error {
-// 	s.users[in.Id] = User{id: int(in.Id), name: in.Name, ip: in.Ip, stream: stream}
-// 	alert := pb.Message{Message: "You are now connected."}
-// 	stream.Send(&alert)
-// 	fmt.Printf("A new user just with id %d connected: %s. Now we have: %d\n", in.Id, in.Name, len(s.users))
-
-// 	return nil
-// }
-
-// func (s *server) MessageUser(stream pb.GRPC_MessageUserServer) error {
-// 	for {
-// 		req, err := stream.Recv()
-// 		if err == io.EOF {
-// 			log.Println("exit")
-// 			return nil
-// 		}
-// 		fmt.Println(req)
-// 		targetId := req.Receiver.Id
-// 		target, ok := s.users[targetId]
-// 		if !ok {
-// 			return errors.New("Couldn't find a user with that ID")
-// 		}
-
-// 		attackerId := req.Sender.Id
-// 		sender, ok := s.users[attackerId]
-// 		if !ok {
-// 			return errors.New("Couldn't find a user with that ID")
-// 		}
-
-// 		target.stream.Send(&pb.Message{Sender: &pb.User{Id: attackerId, Name: sender.name}, Receiver: &pb.User{Id: targetId, Name: target.name}, Message: "Tag, you're it! :)"})
-// 		return nil
-// 	}
-// 	return errors.New("Couldn't find user with that id")
-// }
-
-func createMessage(message string, sender, receiver pb.User) *pb.Message {
-	return &pb.Message{Sender: &sender, Receiver: &receiver, Message: message}
+func (channel *MessageChannel) Add(id int32, listener chan<- pb.Message) error {
+	channel.listenerMu.Lock()
+	defer channel.listenerMu.Unlock()
+	if channel.listeners == nil {
+		channel.listeners = map[int32]chan<- pb.Message{}
+	}
+	if _, ok := channel.listeners[id]; ok {
+		return status.Errorf(codes.AlreadyExists, "The id %d is already in use by another user", id)
+	}
+	channel.listeners[id] = listener
+	return nil
 }
 
-func (s *server) EstablishBidiConnection(stream pb.GRPC_EstablishBidiConnectionServer) error {
+func (channel *MessageChannel) Remove(id int32) {
+	channel.listenerMu.Lock()
+	defer channel.listenerMu.Unlock()
+	if c, ok := channel.listeners[id]; ok {
+		close(c)
+		delete(channel.listeners, id)
+	}
+}
 
-	var max int32
+func (channel *MessageChannel) SendMessage(ctx context.Context, msg pb.Message) {
+	channel.listenerMu.RLock()
+	receiver := msg.Receiver
+	fmt.Println(msg)
+	defer channel.listenerMu.RUnlock()
+	for key, listener := range channel.listeners {
+		if msg.Message == "Attack" {
+			fmt.Println("Reciever: ", receiver.Id)
+			fmt.Println("Key: ", key)
+			if key == receiver.Id {
+				fmt.Println(listener)
+				select {
+				case listener <- msg:
+				case <-ctx.Done():
+					return
+				}
+			}
+		} else {
+			fmt.Println(listener)
+			select {
+			case listener <- msg:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}
+	return
+}
+
+func (s *Server) EstablishBidiConnection(stream pb.GRPC_EstablishBidiConnectionServer) error {
+
 	ctx := stream.Context()
-	resp := new(pb.Message)
-	fmt.Println("Hello")
+	fmt.Println("User connected")
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -82,38 +98,81 @@ func (s *server) EstablishBidiConnection(stream pb.GRPC_EstablishBidiConnectionS
 			log.Println("exit")
 			return nil
 		}
-
+		// Error checking
 		if err != nil {
 			log.Printf("Received an error: %v", err)
 			continue
 		}
 
-		if _, ok := s.users[req.Sender.Id]; !ok {
-			sender := req.Sender
-			fmt.Printf("A new user just with id %d connected: %s. Now we have: %d\n", sender.Id, sender.Name, len(s.users))
-			s.users[sender.Id] = User{id: int(sender.Id), name: sender.Name, stream: stream}
-			resp = createMessage("Welcome.", *sender, *sender)
+		// Check so that sender actually is set.
+		if req.Sender.Id == 0 {
+			return status.Error(codes.FailedPrecondition, "Missing sender ID")
 		}
 
-		if req.Message == "Attack" {
+		// Setup sender.
+		sender := req.Sender
+		fmt.Printf("A new user just with id %d connected: %s. Now we have: %d\n", sender.Id, sender.Name, len(s.channels.listeners))
 
-		}
+		listener := make(chan pb.Message)
+		err = s.channels.Add(sender.Id, listener)
 
-		fmt.Println(resp)
-		for k, v := range s.users {
-			fmt.Println(k, " => ", v)
+		if err != nil {
+			return err
 		}
-		fmt.Println(req.Receiver.Id)
-		if err := s.users[req.Receiver.Id].stream.Send(resp); err != nil {
-			log.Printf("Send error: %v", err)
-		}
+		defer func() {
+			s.channels.Remove(sender.Id)
+			fmt.Println("%s has left the channel", sender.Name)
+		}()
 
-		log.Printf("Send new max: %d", max)
+		sendErrorChannel := make(chan error)
+		go func() {
+			for {
+				select {
+				case msg, ok := <-listener:
+					fmt.Println(msg, ok)
+					if !ok {
+						return
+					}
+					err = stream.Send(&msg)
+					if err != nil {
+						sendErrorChannel <- err
+						return
+					}
+				case <-stream.Context().Done():
+					return
+				}
+			}
+		}()
+
+		recErrorChannel := make(chan error)
+		go func() {
+			for {
+				msg, err := stream.Recv()
+				if err == io.EOF {
+					close(recErrorChannel)
+					return
+				}
+				if err != nil {
+					recErrorChannel <- err
+					return
+				}
+				s.channels.SendMessage(stream.Context(), *msg)
+			}
+		}()
+
+		select {
+		case err, ok := <-recErrorChannel:
+			if !ok {
+				return nil
+			}
+			return err
+		case err := <-sendErrorChannel:
+			return err
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		}
 	}
-}
-
-func newServer() *server {
-	return &server{users: make(map[int32]User)}
+	return nil
 }
 
 func main() {
@@ -125,9 +184,9 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	myServer := newServer()
+	// myServer := newServer()
 
-	pb.RegisterGRPCServer(s, myServer)
+	pb.RegisterGRPCServer(s, &Server{})
 	// Register reflection service on gRPC server.
 	reflection.Register(s)
 	if err := s.Serve(lis); err != nil {
