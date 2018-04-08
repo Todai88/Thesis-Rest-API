@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	pb "github.com/todai88/thesis/Thesis-GRPC/proto"
+	pb "github.com/Todai88/Thesis/Thesis-GRPC/proto"
 	"google.golang.org/grpc"
 )
 
@@ -19,7 +19,6 @@ const (
 )
 
 func createUser() pb.User {
-	stdin := bufio.NewReader(os.Stdin)
 	var id int32
 	fmt.Print("Enter ID (numeric): ")
 	fmt.Scanf("%d", &id)
@@ -27,10 +26,9 @@ func createUser() pb.User {
 	if len(os.Args) > 1 {
 		name = os.Args[1]
 	}
-	stdin.ReadString('\n')
 	return pb.User{Id: id, Name: name}
 }
-func estblishConnectionAndSendMessages(user pb.User) error {
+func estblishConnectionAndSendMessages(user pb.User) {
 	conn, err := grpc.Dial(address, grpc.WithInsecure())
 	if err != nil {
 		log.Fatalf("can not connect with server %v", err)
@@ -44,64 +42,47 @@ func estblishConnectionAndSendMessages(user pb.User) error {
 	req := pb.Message{Sender: &pb.User{Id: user.Id, Name: user.Name}, Message: "Connection", Receiver: &pb.User{Id: user.Id, Name: user.Name}}
 	client.Send(&req)
 	if err != nil {
-		log.Fatalf("openn stream error %v", err)
+		log.Fatalf("open stream error %v", err)
 	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		// listener := make(chan pb.Message)
-		// sendErrorChannel := make(chan error)
-		go func() {
-			for {
-				msg, err := client.Recv()
+	go func() {
+		for {
+			msg, err := client.Recv()
+			if err != nil {
 				if err == io.EOF {
 					return
 				}
-				log.Println(msg)
+				log.Println("read error:", err)
+				return
 			}
-		}()
-
-		// recErrorChannel := make(chan error)
-		// go func() {
-		// 	for {
-		// 		msg, err := client.Recv()
-		// 		if err == io.EOF {
-		// 			close(recErrorChannel)
-		// 			return
-		// 		}
-		// 		if err != nil {
-		// 			recErrorChannel <- err
-		// 			return
-		// 		}
-		// 		log.Printf("Received a message: %s", msg)
-		// 	}
-		// }()
-		for {
-			reader := bufio.NewReader(os.Stdin)
-			fmt.Print("Enter Target Id: ")
-			text, _ := reader.ReadString('\n')
-			number, _ := strconv.ParseInt(text, 10, 4)
-			num := int32(number)
-
-			fmt.Println(num)
-
-			req := pb.Message{Sender: &pb.User{Id: user.Id, Name: user.Name},
-				Receiver: &pb.User{Id: num, Name: ""},
-				Message:  "Attack"}
-			fmt.Println(req)
-			err = client.Send(&req)
+			log.Println("read message:", msg)
 		}
-		select {
-		case <-client.Context().Done():
-			return client.Context().Err()
+	}()
+
+	reader := bufio.NewScanner(os.Stdin)
+	fmt.Println("Enter Target Id: ")
+	for reader.Scan() {
+		attackID, err := strconv.ParseInt(reader.Text(), 10, 4)
+		if err != nil {
+			log.Fatal("a number is required")
 		}
+
+		req := pb.Message{
+			Sender: &pb.User{
+				Id:   user.Id,
+				Name: user.Name,
+			},
+			Receiver: &pb.User{
+				Id: int32(attackID),
+			},
+			Message: "Attack",
+		}
+		log.Println("Sending:", req)
+		err = client.Send(&req)
+		fmt.Println("Enter Target Id: ")
 	}
-	return nil
+
+	log.Println(reader.Err())
 }
 
 func main() {
