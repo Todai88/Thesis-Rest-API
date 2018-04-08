@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/todai88/thesis/Thesis-GRPC/proto"
+	pb "github.com/Todai88/Thesis/Thesis-GRPC/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
@@ -57,122 +57,97 @@ func (channel *MessageChannel) SendMessage(ctx context.Context, msg pb.Message) 
 	receiver := msg.Receiver
 	fmt.Println(msg)
 	defer channel.listenerMu.RUnlock()
-	for key, listener := range channel.listeners {
-		if msg.Message == "Attack" {
-			fmt.Println("Reciever: ", receiver.Id)
-			fmt.Println("Key: ", key)
-			if key == receiver.Id {
-				fmt.Println(listener)
-				select {
-				case listener <- msg:
-				case <-ctx.Done():
-					return
-				}
-			}
-		} else {
-			fmt.Println(listener)
-			select {
-			case listener <- msg:
-			case <-ctx.Done():
-				return
-			}
-		}
+	listener, ok := channel.listeners[receiver.Id]
+	if !ok {
+		panic("no such listener")
 	}
-	return
+	fmt.Println("Reciever: ", receiver.Id)
+	fmt.Println(listener)
+	select {
+	case listener <- msg:
+	case <-ctx.Done():
+	}
 }
 
 func (s *Server) EstablishBidiConnection(stream pb.GRPC_EstablishBidiConnectionServer) error {
-
-	ctx := stream.Context()
 	fmt.Println("User connected")
 
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		req, err := stream.Recv()
+	// Get first message
+	req, err := stream.Recv()
+	if err != nil {
 		if err == io.EOF {
 			log.Println("exit")
 			return nil
 		}
-		// Error checking
-		if err != nil {
-			log.Printf("Received an error: %v", err)
-			continue
-		}
-
-		// Check so that sender actually is set.
-		if req.Sender.Id == 0 {
-			return status.Error(codes.FailedPrecondition, "Missing sender ID")
-		}
-
-		// Setup sender.
-		sender := req.Sender
-		fmt.Printf("A new user just with id %d connected: %s. Now we have: %d\n", sender.Id, sender.Name, len(s.channels.listeners))
-
-		listener := make(chan pb.Message)
-		err = s.channels.Add(sender.Id, listener)
-
-		if err != nil {
-			return err
-		}
-		defer func() {
-			s.channels.Remove(sender.Id)
-			fmt.Println("%s has left the channel", sender.Name)
-		}()
-
-		sendErrorChannel := make(chan error)
-		go func() {
-			for {
-				select {
-				case msg, ok := <-listener:
-					fmt.Println(msg, ok)
-					if !ok {
-						return
-					}
-					err = stream.Send(&msg)
-					if err != nil {
-						sendErrorChannel <- err
-						return
-					}
-				case <-stream.Context().Done():
-					return
-				}
-			}
-		}()
-
-		recErrorChannel := make(chan error)
-		go func() {
-			for {
-				msg, err := stream.Recv()
-				if err == io.EOF {
-					close(recErrorChannel)
-					return
-				}
-				if err != nil {
-					recErrorChannel <- err
-					return
-				}
-				s.channels.SendMessage(stream.Context(), *msg)
-			}
-		}()
-
-		select {
-		case err, ok := <-recErrorChannel:
-			if !ok {
-				return nil
-			}
-			return err
-		case err := <-sendErrorChannel:
-			return err
-		case <-stream.Context().Done():
-			return stream.Context().Err()
-		}
+		return err
 	}
-	return nil
+
+	// Check so that sender actually is set.
+	if req.Sender.Id == 0 {
+		return status.Error(codes.FailedPrecondition, "Missing sender ID")
+	}
+
+	// Setup sender.
+	sender := req.Sender
+	fmt.Printf("A new user just with id %d connected: %s. Now we have: %d\n", sender.Id, sender.Name, len(s.channels.listeners))
+
+	listener := make(chan pb.Message)
+	err = s.channels.Add(sender.Id, listener)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		s.channels.Remove(sender.Id)
+		fmt.Printf("%s has left the channel", sender.Name)
+	}()
+
+	sendErrorChannel := make(chan error)
+	go func() {
+		for {
+			select {
+			case msg, ok := <-listener:
+				fmt.Println(msg, ok)
+				if !ok {
+					return
+				}
+				err = stream.Send(&msg)
+				if err != nil {
+					sendErrorChannel <- err
+					return
+				}
+			case <-stream.Context().Done():
+				return
+			}
+		}
+	}()
+
+	recErrorChannel := make(chan error)
+	go func() {
+		for {
+			msg, err := stream.Recv()
+			if err == io.EOF {
+				close(recErrorChannel)
+				return
+			}
+			if err != nil {
+				recErrorChannel <- err
+				return
+			}
+			s.channels.SendMessage(stream.Context(), *msg)
+		}
+	}()
+
+	select {
+	case err, ok := <-recErrorChannel:
+		if !ok {
+			return nil
+		}
+		return err
+	case err := <-sendErrorChannel:
+		return err
+	case <-stream.Context().Done():
+		return stream.Context().Err()
+	}
 }
 
 func main() {
@@ -189,6 +164,7 @@ func main() {
 	pb.RegisterGRPCServer(s, &Server{})
 	// Register reflection service on gRPC server.
 	reflection.Register(s)
+	log.Print("Serving on localhost:5000")
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
