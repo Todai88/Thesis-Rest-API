@@ -70,9 +70,13 @@ func (channel *MessageChannel) SendMessage(ctx context.Context, msg pb.Message) 
 }
 
 func (channel *MessageChannel) Broadcast(ctx context.Context, msg pb.Message) {
+	fmt.Println(channel.listeners)
 	channel.listenerMu.RLock()
+	index := 1
 	defer channel.listenerMu.RUnlock()
 	for _, listener := range channel.listeners {
+		fmt.Printf("Looped %d times\n", index)
+		index = index + 1
 		select {
 		case listener <- msg:
 		case <-ctx.Done():
@@ -111,9 +115,9 @@ func (s *Server) EstablishBidiConnection(stream pb.GRPC_EstablishBidiConnectionS
 		return err
 	}
 	defer func(sender *pb.User) {
+		s.channels.Broadcast(stream.Context(), pb.Message{Sender: sender, Message: "Disconnected"})
 		s.channels.Remove(sender.Id)
 		fmt.Printf("%s has left the channel", sender.Name)
-		s.channels.Broadcast(stream.Context(), pb.Message{Sender: sender, Message: "Disconnected"})
 	}(sender)
 
 	sendErrorChannel := make(chan error)
