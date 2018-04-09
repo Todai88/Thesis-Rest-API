@@ -89,7 +89,7 @@ func (s *Server) EstablishBidiConnection(stream pb.GRPC_EstablishBidiConnectionS
 
 	// Setup sender.
 	sender := req.Sender
-	fmt.Printf("A new user just with id %d connected: %s. Now we have: %d\n", sender.Id, sender.Name, len(s.channels.listeners))
+	fmt.Printf("A new user just with id %d connected: %s. Now we have: %d active users\n%v\n", sender.Id, sender.Name, len(s.channels.listeners)+1, s.channels.listeners)
 
 	listener := make(chan pb.Message)
 	err = s.channels.Add(sender.Id, listener)

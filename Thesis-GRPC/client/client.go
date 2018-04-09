@@ -19,14 +19,15 @@ const (
 )
 
 func createUser() pb.User {
-	var id int32
+	reader := bufio.NewScanner(os.Stdin)
 	fmt.Print("Enter ID (numeric): ")
-	fmt.Scanf("%d", &id)
+	reader.Scan()
+	id, _ := strconv.ParseInt(reader.Text(), 10, 4)
 	name := "Tester"
 	if len(os.Args) > 1 {
 		name = os.Args[1]
 	}
-	return pb.User{Id: id, Name: name}
+	return pb.User{Id: int32(id), Name: name}
 }
 func estblishConnectionAndSendMessages(user pb.User) {
 	conn, err := grpc.Dial(address, grpc.WithInsecure())
