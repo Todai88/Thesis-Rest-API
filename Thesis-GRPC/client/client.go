@@ -11,7 +11,8 @@ import (
 	"strings"
 	"time"
 
-	pb "github.com/Todai88/Thesis/Thesis-GRPC/proto"
+	pb "github.com/todai88/thesis/Thesis-GRPC/proto"
+	"golang.org/x/net/trace"
 	"google.golang.org/grpc"
 )
 
@@ -35,16 +36,20 @@ func estblishConnectionAndSendMessages(user pb.User) {
 	if err != nil {
 		log.Fatalf("can not connect with server %v", err)
 	}
+	// Make sure connection closes after finishing run
 	defer conn.Close()
-	// create stream
 
+	// create stream
 	timeout := 5 * time.Minute
-	ctx, _ := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	// Release memory after shutdown
+	defer cancel()
+
 	client, err := pb.NewGRPCClient(conn).EstablishBidiConnection(ctx)
 	req := pb.Message{Sender: &pb.User{Id: user.Id, Name: user.Name}, Message: "Connection", Receiver: &pb.User{Id: user.Id, Name: user.Name}}
 	client.Send(&req)
 	if err != nil {
-		log.Fatalf("open stream error %v", err)
+		logError(ctx, "Something went wrong when client attempted to open stream: %v", err)
 	}
 
 	go func() {
@@ -52,28 +57,30 @@ func estblishConnectionAndSendMessages(user pb.User) {
 			msg, err := client.Recv()
 			if err != nil {
 				if err == io.EOF {
-					fmt.Println("IO.EOF!!")
+					fmt.Println("EOF reached, exeting reader.")
 					return
 				}
-				log.Println("read error:", err)
+				logError(ctx, "Something went wrong when reading: %v", err)
 				return
 			}
 			log.Println("read message:", msg)
 		}
 	}()
 
-	reader := bufio.NewScanner(os.Stdin)
-	fmt.Printf("Enter Target Id: ")
-	for reader.Scan() {
-		in := strings.Replace(reader.Text(), "\n", "", -1)
+	for {
+		in := printAndRead(ctx, "Enter Target Id: ")
 		if in == "q" {
-			fmt.Println("Sending close command")
-			client.CloseSend()
+			if err := client.CloseSend(); err != nil {
+				logError(ctx, "CloseSend returned error in client: %v", err)
+			}
 			break
 		}
-		attackID, err := strconv.ParseInt(reader.Text(), 10, 4)
+
+		attackID, err := strconv.ParseInt(in, 10, 4)
+
 		if err != nil {
-			log.Fatal("a number is required")
+			logError(ctx, "An error occurred, a number is required: %v", err)
+			continue
 		}
 
 		req := pb.Message{
@@ -88,14 +95,29 @@ func estblishConnectionAndSendMessages(user pb.User) {
 		}
 		err = client.Send(&req)
 		if err != nil {
-			fmt.Println("Error when sending: %v", err)
+			logError(ctx, "Something went wrong when client send: %v", err)
 		}
-		fmt.Println("Enter Target Id: ")
 	}
-
-	log.Println(reader.Err())
 }
 
+func logError(parentContext context.Context, format string, a ...interface{}) {
+	tr, ok := trace.FromContext(parentContext)
+	if !ok {
+		return
+	}
+	tr.LazyPrintf(format, a...)
+}
+
+func printAndRead(parentContext context.Context, output string) string {
+	reader := bufio.NewScanner(os.Stdin)
+	if err := reader.Err(); err != nil {
+		logError(parentContext, "Something went wrong when starting the scanner, %v", err)
+	}
+	fmt.Printf(output)
+	reader.Scan()
+	in := strings.Replace(reader.Text(), "\n", "", -1)
+	return in
+}
 func main() {
 	user := createUser()
 	estblishConnectionAndSendMessages(user)

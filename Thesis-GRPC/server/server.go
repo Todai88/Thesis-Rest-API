@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/Todai88/Thesis/Thesis-GRPC/proto"
+	pb "github.com/todai88/thesis/Thesis-GRPC/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
@@ -119,14 +119,13 @@ func (s *Server) EstablishBidiConnection(stream pb.GRPC_EstablishBidiConnectionS
 	sendErrorChannel := make(chan error)
 	go func() {
 		for {
-			msg, ok := <-listener
-			fmt.Println("Sending something: ", msg, ok)
 			select {
 			case msg, ok := <-listener:
 				fmt.Println(msg, ok)
 				if !ok {
 					return
 				}
+
 				fmt.Println("Before send: ", &msg)
 				err = stream.Send(&msg)
 				if err != nil {
