@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	pb "github.com/Todai88/Thesis/Thesis-GRPC/proto"
@@ -51,6 +52,7 @@ func estblishConnectionAndSendMessages(user pb.User) {
 			msg, err := client.Recv()
 			if err != nil {
 				if err == io.EOF {
+					fmt.Println("IO.EOF!!")
 					return
 				}
 				log.Println("read error:", err)
@@ -61,8 +63,14 @@ func estblishConnectionAndSendMessages(user pb.User) {
 	}()
 
 	reader := bufio.NewScanner(os.Stdin)
-	fmt.Println("Enter Target Id: ")
+	fmt.Printf("Enter Target Id: ")
 	for reader.Scan() {
+		in := strings.Replace(reader.Text(), "\n", "", -1)
+		if in == "q" {
+			fmt.Println("Sending close command")
+			client.CloseSend()
+			break
+		}
 		attackID, err := strconv.ParseInt(reader.Text(), 10, 4)
 		if err != nil {
 			log.Fatal("a number is required")
@@ -78,8 +86,10 @@ func estblishConnectionAndSendMessages(user pb.User) {
 			},
 			Message: "Attack",
 		}
-		log.Println("Sending:", req)
 		err = client.Send(&req)
+		if err != nil {
+			fmt.Println("Error when sending: %v", err)
+		}
 		fmt.Println("Enter Target Id: ")
 	}
 
