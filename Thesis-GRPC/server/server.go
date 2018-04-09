@@ -69,6 +69,18 @@ func (channel *MessageChannel) SendMessage(ctx context.Context, msg pb.Message) 
 	}
 }
 
+func (channel *MessageChannel) Broadcast(ctx context.Context, msg pb.Message) {
+	channel.listenerMu.RLock()
+	defer channel.listenerMu.RUnlock()
+	for _, listener := range channel.listeners {
+		select {
+		case listener <- msg:
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
 func (s *Server) EstablishBidiConnection(stream pb.GRPC_EstablishBidiConnectionServer) error {
 	fmt.Println("User connected")
 
@@ -89,17 +101,20 @@ func (s *Server) EstablishBidiConnection(stream pb.GRPC_EstablishBidiConnectionS
 
 	// Setup sender.
 	sender := req.Sender
-	fmt.Printf("A new user just with id %d connected: %s. Now we have: %d active users\n%v\n", sender.Id, sender.Name, len(s.channels.listeners)+1, s.channels.listeners)
 
 	listener := make(chan pb.Message)
+	fmt.Printf("A new user just with id %d connected: %s. Now we have: %d active users\n%v\n", sender.Id, sender.Name, len(s.channels.listeners)+1, s.channels.listeners)
+	s.channels.Broadcast(stream.Context(), pb.Message{Sender: sender, Message: "Connected"})
+
 	err = s.channels.Add(sender.Id, listener)
 	if err != nil {
 		return err
 	}
-	defer func() {
+	defer func(sender *pb.User) {
 		s.channels.Remove(sender.Id)
 		fmt.Printf("%s has left the channel", sender.Name)
-	}()
+		s.channels.Broadcast(stream.Context(), pb.Message{Sender: sender, Message: "Disconnected"})
+	}(sender)
 
 	sendErrorChannel := make(chan error)
 	go func() {
