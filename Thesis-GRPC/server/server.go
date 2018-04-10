@@ -33,6 +33,7 @@ type Server struct {
 func (channel *MessageChannel) Add(id int32, listener chan<- pb.Message) error {
 	channel.listenerMu.Lock()
 	defer channel.listenerMu.Unlock()
+	fmt.Printf("A new user just with id %d connected. Now we have: %d active users\n", id, len(channel.listeners)+1)
 	if channel.listeners == nil {
 		channel.listeners = map[int32]chan<- pb.Message{}
 	}
@@ -55,9 +56,9 @@ func (channel *MessageChannel) Remove(id int32) {
 
 func (channel *MessageChannel) SendMessage(ctx context.Context, msg pb.Message) {
 	channel.listenerMu.RLock()
+	defer channel.listenerMu.RUnlock()
 	receiver := msg.Receiver
 	fmt.Println("Message: ", msg)
-	defer channel.listenerMu.RUnlock()
 	listener, ok := channel.listeners[receiver.Id]
 	if !ok {
 		panic("no such listener")
@@ -65,25 +66,39 @@ func (channel *MessageChannel) SendMessage(ctx context.Context, msg pb.Message) 
 	fmt.Println("Reciever: ", receiver.Id)
 	select {
 	case listener <- msg:
-	case <-ctx.Done():
+		// case <-ctx.Done():
 	}
 }
 
 func (channel *MessageChannel) Broadcast(ctx context.Context, msg pb.Message) {
 	channel.listenerMu.RLock()
 	defer channel.listenerMu.RUnlock()
-	for _, listener := range channel.listeners {
+	message := msg.GetMessage()
+	fmt.Println(message)
+	if message == "Disconnected" {
+		fmt.Println("----- Started Disconnect Broadcast -----")
+	}
+	fmt.Println("Inside broadcast: ", &msg)
+	fmt.Println("Available listeners: ", channel.listeners)
+	index := 1
+	for key, listener := range channel.listeners {
+		fmt.Printf("This is iteration %d\nBroadcasting to key %v with listener %v\n", index, key, listener)
+		index = index + 1
 		select {
 		case listener <- msg:
-		case <-ctx.Done():
-			return
+			fmt.Printf("Just sent to channel %v\n with key %v\n", listener, key)
+			// case <-ctx.Done():
+			// 	fmt.Printf("Broadcast context is apparently done on %v\n with key %v\n", listener, key)
+			// 	if message == "Disconnected" {
+			// 		fmt.Println("----- Finished Disconnect Broadcast -----")
+			// 	}
+			// 	return
 		}
 	}
 }
 
 func (s *Server) EstablishBidiConnection(stream pb.GRPC_EstablishBidiConnectionServer) error {
 	fmt.Println("User connected")
-
 	// Get first message
 	req, err := stream.Recv()
 	if err != nil {
@@ -103,17 +118,18 @@ func (s *Server) EstablishBidiConnection(stream pb.GRPC_EstablishBidiConnectionS
 	sender := req.Sender
 
 	listener := make(chan pb.Message)
-	fmt.Printf("A new user just with id %d connected: %s. Now we have: %d active users\n", sender.Id, sender.Name, len(s.channels.listeners)+1)
 	s.channels.Broadcast(stream.Context(), pb.Message{Sender: sender, Message: "Connected"})
-
 	err = s.channels.Add(sender.Id, listener)
+
 	if err != nil {
 		return err
 	}
+
 	defer func(sender *pb.User) {
+		fmt.Println("Entered defer: ", sender)
 		s.channels.Remove(sender.Id)
-		fmt.Printf("%s has left the channel", sender.Name)
 		s.channels.Broadcast(stream.Context(), pb.Message{Sender: sender, Message: "Disconnected"})
+		fmt.Printf("%s has left the channel", sender.Name)
 	}(sender)
 
 	sendErrorChannel := make(chan error)
@@ -121,19 +137,18 @@ func (s *Server) EstablishBidiConnection(stream pb.GRPC_EstablishBidiConnectionS
 		for {
 			select {
 			case msg, ok := <-listener:
-				fmt.Println(msg, ok)
 				if !ok {
 					return
 				}
-
-				fmt.Println("Before send: ", &msg)
+				fmt.Println("-> Sening to stream:	", &msg)
 				err = stream.Send(&msg)
 				if err != nil {
+					fmt.Println(err)
 					sendErrorChannel <- err
 					return
 				}
-			case <-stream.Context().Done():
-				return
+				// case <-stream.Context().Done():
+				// 	return
 			}
 		}
 	}()
@@ -163,9 +178,9 @@ func (s *Server) EstablishBidiConnection(stream pb.GRPC_EstablishBidiConnectionS
 		return err
 	case err := <-sendErrorChannel:
 		return err
-	case <-stream.Context().Done():
-		fmt.Println("Final Select: DONE")
-		return stream.Context().Err()
+		// case <-stream.Context().Done():
+		// 	fmt.Println("Final Select: DONE")
+		// 	return stream.Context().Err()
 	}
 }
 

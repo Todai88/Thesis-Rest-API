@@ -9,7 +9,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	pb "github.com/todai88/thesis/Thesis-GRPC/proto"
 	"golang.org/x/net/trace"
@@ -40,10 +39,10 @@ func estblishConnectionAndSendMessages(user pb.User) {
 	defer conn.Close()
 
 	// create stream
-	timeout := 5 * time.Minute
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	//timeout := 5 * time.Minute
+	ctx := context.Background() // .WithTimeout(context.Background(), timeout)
 	// Release memory after shutdown
-	defer cancel()
+	//defer cancel()
 
 	client, err := pb.NewGRPCClient(conn).EstablishBidiConnection(ctx)
 	req := pb.Message{Sender: &pb.User{Id: user.Id, Name: user.Name}, Message: "Connection", Receiver: &pb.User{Id: user.Id, Name: user.Name}}
